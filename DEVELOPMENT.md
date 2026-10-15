@@ -31,7 +31,7 @@ A separate `COREGRC_CREDENTIALS` file keeps that sign-in apart from your product
 - `login` uses OAuth with PKCE, `client_id` `coregrc-cli`, scope `core-grc`, and a loopback redirect on `127.0.0.1:8788`–`8798`. The server recognises a redirect on that port range as the CLI, which lists the CLI-only tools and saves changes with source `cli`. Don't change the port range without a matching server change.
 - Every command sends `initialize`, `notifications/initialized`, and `MCP-Protocol-Version` before `tools/list` or `tools/call`. `clientInfo.version` comes from `package.json`.
 - The access token is refreshed a minute before it expires and once more on a `401`.
-- Module commands check the live `tools/list`, so new server tools need no CLI change. A name that isn't listed is resolved through `coregrc_find_tool` so server aliases such as `tprm_dashboard` work.
+- Module commands call `<module>_<action>` directly, so new server tools need no CLI change. The server resolves aliases such as `tprm_dashboard`. `tools/list` is only fetched when the server says the name is unknown, to tell a wrong module from a wrong action.
 - Some tools are only listed for CLI sign-ins.
 
 ## Publish

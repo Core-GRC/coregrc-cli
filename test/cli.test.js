@@ -25,7 +25,15 @@ const {
   assertListedModuleTool,
   parseToolArgs,
   parseMcpHttpBody,
+  isUnknownToolResult,
+  plainToolDescription,
 } = require("../src/mcp");
+
+const OK_RESULT = { structuredContent: { success: true } };
+const unknownToolResult = (name) => ({
+  isError: true,
+  structuredContent: { success: false, error: `Unknown tool: ${name}` },
+});
 
 describe("defaults", () => {
   it("uses mcp.core-grc.com, not cloudfunctions.net", () => {
@@ -220,27 +228,51 @@ describe("live tools/list module discovery", () => {
     assert.deepEqual([...prefixesFromTools(tools)].sort(), ["consent", "coregrc", "policy", "tprm"]);
   });
 
-  it("calls a later pack without a CLI allowlist edit", async () => {
+  it("calls a later pack without a CLI allowlist edit or a tools/list fetch", async () => {
     let called = null;
+    let printed = null;
     await run(["rights", "list-requests"], {
-      fetchToolList: async () => [{ name: "rights_list_requests" }],
+      fetchToolList: async () => {
+        throw new Error("should not fetch tools/list for a known tool");
+      },
       callTool: async (name, jsonArgs) => {
         called = { name, jsonArgs };
+        return OK_RESULT;
+      },
+      printToolResult: (result) => {
+        printed = result;
       },
     });
     assert.deepEqual(called, { name: "rights_list_requests", jsonArgs: undefined });
+    assert.equal(printed, OK_RESULT);
   });
 
-  it("rejects an unknown module prefix from the live list", async () => {
+  it("explains an unknown module prefix from the live list", async () => {
     await assert.rejects(
       () => run(["consent", "list-websites"], {
         fetchToolList: async () => [{ name: "tprm_list_entities" }],
-        callTool: async () => {
-          throw new Error("should not call");
+        callTool: async (name) => unknownToolResult(name),
+        printToolResult: () => {
+          throw new Error("should not print");
         },
       }),
       /Unknown command: consent/
     );
+  });
+
+  it("prints a tool error that is not about the name without fetching tools/list", async () => {
+    const failure = { isError: true, structuredContent: { success: false, error: "entityType is required" } };
+    let printed = null;
+    await run(["tprm", "list-entities"], {
+      fetchToolList: async () => {
+        throw new Error("should not fetch tools/list");
+      },
+      callTool: async () => failure,
+      printToolResult: (result) => {
+        printed = result;
+      },
+    });
+    assert.equal(printed, failure);
   });
 
   it("rejects a tool missing from the live list", () => {
@@ -370,42 +402,43 @@ describe("token and 401 handling", () => {
 });
 
 describe("aliases and version", () => {
-  it("resolves an alias such as tprm dashboard through the server", async () => {
+  it("passes an alias such as tprm dashboard to the server to resolve", async () => {
     let called = null;
     await run(["tprm", "dashboard"], {
-      fetchToolList: async () => [{ name: "tprm_get_dashboard" }],
-      resolveToolAlias: async (name) => (name === "tprm_dashboard" ? "tprm_get_dashboard" : null),
+      fetchToolList: async () => {
+        throw new Error("should not fetch tools/list");
+      },
       callTool: async (name, jsonArgs) => {
         called = { name, jsonArgs };
+        return OK_RESULT;
       },
+      printToolResult: () => {},
     });
-    assert.deepEqual(called, { name: "tprm_get_dashboard", jsonArgs: undefined });
+    assert.deepEqual(called, { name: "tprm_dashboard", jsonArgs: undefined });
   });
 
   it("still rejects a name the server does not know", async () => {
     await assert.rejects(
       () => run(["tprm", "frobnicate"], {
         fetchToolList: async () => [{ name: "tprm_get_dashboard" }],
-        resolveToolAlias: async () => null,
-        callTool: async () => {
-          throw new Error("should not call");
+        callTool: async (name) => unknownToolResult(name),
+        printToolResult: () => {
+          throw new Error("should not print");
         },
       }),
-      /Unknown tool: tprm_frobnicate/
+      /Unknown tool: tprm_frobnicate\. Run: coregrc tools --module tprm/
     );
   });
 
-  it("does not ask the server when the name is already listed", async () => {
-    let resolved = false;
-    await run(["rights", "get-stats"], {
-      fetchToolList: async () => [{ name: "rights_get_stats" }],
-      resolveToolAlias: async () => {
-        resolved = true;
-        return null;
+  it("prints call results", async () => {
+    let printed = null;
+    await run(["call", "tprm_get_dashboard", "{}"], {
+      callTool: async () => OK_RESULT,
+      printToolResult: (result) => {
+        printed = result;
       },
-      callTool: async () => {},
     });
-    assert.equal(resolved, false);
+    assert.equal(printed, OK_RESULT);
   });
 
   it("prints the package version", async () => {
@@ -420,5 +453,71 @@ describe("aliases and version", () => {
     }
     assert.deepEqual(lines, [version]);
     assert.equal(buildInitializeParams().clientInfo.version, version);
+  });
+});
+
+describe("unexpected arguments", () => {
+  const neverCalled = () => {
+    throw new Error("should not run");
+  };
+  const deps = { login: neverCalled, logout: neverCalled, callTool: neverCalled, fetchToolList: neverCalled };
+
+  it("rejects arguments on login, logout, whoami, and version before doing anything", async () => {
+    for (const argv of [["login", "extra"], ["logout", "--org", "x"], ["whoami", "me"], ["--version", "x"]]) {
+      await assert.rejects(() => run(argv, deps), new RegExp(`coregrc ${argv[0]} takes no arguments`));
+    }
+  });
+
+  it("still runs login and logout with no arguments", async () => {
+    const ran = [];
+    await run(["login"], { login: async () => ran.push("login") });
+    await run(["logout"], { logout: async () => ran.push("logout") });
+    assert.deepEqual(ran, ["login", "logout"]);
+  });
+
+  it("allows only --module on tools", async () => {
+    for (const argv of [["tools", "tprm"], ["tools", "--module"], ["tools", "--module", "--x"], ["tools", "--module=tprm", "extra"], ["tools", "--modul=tprm"]]) {
+      await assert.rejects(() => run(argv, deps), /Usage: coregrc tools \[--module <prefix>\]/);
+    }
+  });
+
+  it("needs exactly one tool name on describe", async () => {
+    for (const argv of [["describe"], ["describe", "a", "b"]]) {
+      await assert.rejects(() => run(argv, deps), /Usage: coregrc describe <tool-name>/);
+    }
+  });
+
+  it("rejects a third argument on call", async () => {
+    await assert.rejects(() => run(["call", "tprm_get_dashboard", "{}", "extra"], deps), /Usage: coregrc call/);
+    await assert.rejects(() => run(["call"], deps), /Usage: coregrc call/);
+  });
+});
+
+describe("isUnknownToolResult", () => {
+  it("matches only the server's unknown-tool error", () => {
+    assert.equal(isUnknownToolResult(unknownToolResult("tprm_x")), true);
+    assert.equal(isUnknownToolResult({ isError: true, structuredContent: { error: "Record not found" } }), false);
+    assert.equal(isUnknownToolResult({ structuredContent: { error: "Unknown tool: x" } }), false);
+    assert.equal(isUnknownToolResult(OK_RESULT), false);
+    assert.equal(isUnknownToolResult(null), false);
+    assert.equal(isUnknownToolResult({ isError: true }), false);
+  });
+});
+
+describe("plainToolDescription", () => {
+  it("drops the name and title the server puts in front", () => {
+    const tool = {
+      name: "rights_list_workflows",
+      title: "List privacy rights workflows",
+      description: "rights_list_workflows. List privacy rights workflows. List privacy rights workflow definitions.",
+    };
+    assert.equal(plainToolDescription(tool), "List privacy rights workflow definitions.");
+  });
+
+  it("leaves other descriptions alone", () => {
+    assert.equal(plainToolDescription({ name: "a_b", title: "T", description: "Does a thing." }), "Does a thing.");
+    assert.equal(plainToolDescription({ name: "a_b", description: "a_b. Does a thing." }), "Does a thing.");
+    assert.equal(plainToolDescription({ name: "a_b" }), "");
+    assert.equal(plainToolDescription(null), "");
   });
 });

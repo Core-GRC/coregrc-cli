@@ -4,12 +4,12 @@ const { login, logout } = require("./auth");
 const {
   listTools,
   callTool,
+  printToolResult,
+  isUnknownToolResult,
   whoami,
   describeTool,
   fetchToolList,
-  resolveToolAlias,
   assertListedModuleTool,
-  modulePrefixExists,
   CLI_VERSION,
 } = require("./mcp");
 
@@ -107,58 +107,78 @@ function toolNameFromModuleCommand(moduleName, rest) {
   return { name: `${moduleName}_${kebabOrTokensToSuffix(tokens)}`, jsonArgs };
 }
 
+function assertNoArgs(cmd, rest) {
+  if (rest.length > 0) {
+    throw new Error(`coregrc ${cmd} takes no arguments. Run: coregrc --help`);
+  }
+}
+
+/** `tools` accepts only `--module <prefix>` or `--module=<prefix>`. */
+function assertToolsArgs(rest) {
+  const ok =
+    rest.length === 0 ||
+    (rest.length === 2 && rest[0] === "--module" && rest[1] && !rest[1].startsWith("-")) ||
+    (rest.length === 1 && /^--module=.+/.test(rest[0]));
+  if (!ok) throw new Error("Usage: coregrc tools [--module <prefix>]");
+}
+
 async function run(argv, deps = {}) {
   const fetchTools = deps.fetchToolList || fetchToolList;
   const invoke = deps.callTool || callTool;
+  const print = deps.printToolResult || printToolResult;
   const [cmd, ...rest] = argv;
   if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") {
     console.log(usage());
     return;
   }
   if (cmd === "version" || cmd === "--version" || cmd === "-v") {
+    assertNoArgs(cmd, rest);
     console.log(CLI_VERSION);
     return;
   }
   if (cmd === "login") {
-    await login();
+    assertNoArgs(cmd, rest);
+    await (deps.login || login)();
     return;
   }
   if (cmd === "logout") {
-    await logout();
+    assertNoArgs(cmd, rest);
+    await (deps.logout || logout)();
     return;
   }
   if (cmd === "whoami") {
+    assertNoArgs(cmd, rest);
     await whoami();
     return;
   }
   if (cmd === "tools") {
+    assertToolsArgs(rest);
     await listTools(parseModuleFlag(rest));
     return;
   }
   if (cmd === "describe") {
+    if (rest.length !== 1) throw new Error("Usage: coregrc describe <tool-name>");
     await describeTool(rest[0]);
     return;
   }
   if (cmd === "call") {
     const [name, jsonArgs] = rest;
-    if (!name) throw new Error("Usage: coregrc call <tool-name> [json-args]");
-    await invoke(name, jsonArgs);
+    if (!name || rest.length > 2) throw new Error("Usage: coregrc call <tool-name> [json-args]");
+    print(await invoke(name, jsonArgs));
     return;
   }
   if (RESERVED_COMMANDS.has(cmd)) {
     throw new Error(`Unknown command: ${cmd}\n\n${usage()}`);
   }
   const { name, jsonArgs } = toolNameFromModuleCommand(cmd, rest);
-  const tools = await fetchTools();
-  let toolName = name;
-  if (modulePrefixExists(cmd, tools) && !tools.some((tool) => tool.name === name)) {
-    // Not a listed name; it may be an alias such as tprm_dashboard.
-    const resolve = deps.resolveToolAlias || resolveToolAlias;
-    const canonical = await resolve(name);
-    if (canonical && tools.some((tool) => tool.name === canonical)) toolName = canonical;
+  // Call straight away: the server resolves aliases such as tprm_dashboard and
+  // enforces modules and permissions. tools/list is only fetched to explain an
+  // unknown name, which saves a round trip on every normal command.
+  const result = await invoke(name, jsonArgs);
+  if (isUnknownToolResult(result)) {
+    assertListedModuleTool(cmd, name, await fetchTools());
   }
-  assertListedModuleTool(cmd, toolName, tools);
-  await invoke(toolName, jsonArgs);
+  print(result);
 }
 
 module.exports = {

@@ -182,27 +182,27 @@ function assertListedModuleTool(moduleName, toolName, tools) {
   }
 }
 
-/**
- * tools/list only has canonical names. Aliases such as tprm_dashboard are
- * resolved by the server's coregrc_find_tool, so the CLI needs no alias list.
- * Returns the canonical name, or null when the server does not know the name.
- */
-async function resolveToolAlias(name) {
-  const result = await mcpRpc("tools/call", { name: "coregrc_find_tool", arguments: { name } });
-  if (toolCallFailed(result)) return null;
-  const tool = result && result.structuredContent && result.structuredContent.tool;
-  return tool && typeof tool.name === "string" ? tool.name : null;
-}
-
 async function fetchToolList() {
   const result = await mcpRpc("tools/list", {});
   return result.tools || [];
 }
 
+/**
+ * The server starts each description with the tool name and title so clients
+ * that hide the title still show it. The list already prints the name, so drop both.
+ */
+function plainToolDescription(tool) {
+  let text = String((tool && tool.description) || "");
+  for (const prefix of [tool && tool.name, tool && tool.title]) {
+    if (prefix && text.startsWith(`${prefix}. `)) text = text.slice(prefix.length + 2);
+  }
+  return text;
+}
+
 async function listTools(moduleName) {
   const tools = filterToolsByModule(await fetchToolList(), moduleName);
   for (const tool of tools) {
-    console.log(`${tool.name}\t${tool.description || ""}`);
+    console.log(`${tool.name}\t${plainToolDescription(tool)}`);
   }
 }
 
@@ -246,11 +246,16 @@ function parseToolArgs(argsJson) {
   return args;
 }
 
+/** The server's reply when no tool or alias has this name. */
+function isUnknownToolResult(result) {
+  if (!toolCallFailed(result)) return false;
+  const error = result.structuredContent && result.structuredContent.error;
+  return typeof error === "string" && error.startsWith("Unknown tool: ");
+}
+
 async function callTool(name, argsJson) {
   const args = parseToolArgs(argsJson);
-  const result = await mcpRpc("tools/call", { name, arguments: args });
-  printToolResult(result);
-  return result;
+  return mcpRpc("tools/call", { name, arguments: args });
 }
 
 async function whoami() {
@@ -283,7 +288,8 @@ module.exports = {
   filterToolsByModule,
   printToolResult,
   fetchToolList,
-  resolveToolAlias,
+  isUnknownToolResult,
+  plainToolDescription,
   mcpHeaders,
   buildInitializeParams,
   MCP_PROTOCOL_VERSION,
