@@ -36,12 +36,13 @@ A separate `COREGRC_CREDENTIALS` file keeps that sign-in apart from your product
 
 ## Publish
 
-Releases publish from GitHub Actions with npm trusted publishing, so there is no npm token to manage, and each version carries provenance.
+Releases are staged from GitHub Actions with npm trusted publishing, so there is no npm token to manage, and each version carries provenance. A maintainer approves each staged release with 2FA before it goes live.
 
 1. Bump `version` in `package.json` and commit.
 2. `npm test` and `npm pack --dry-run`. Check only `bin`, `src`, `README.md`, `LICENSE`, and `package.json` are included.
-3. Create a GitHub release with the tag `v<version>`, for example `v1.0.1`. The `Publish` workflow checks the tag matches `package.json`, runs the tests, and publishes.
-4. Update https://core-grc.com/claude/cli if commands or behaviour changed.
+3. Create a GitHub release with the tag `v<version>`, for example `v1.0.1`. The `Publish` workflow checks the tag matches `package.json`, runs the tests, and stages the release on npm.
+4. Approve it: `npm stage list coregrc`, then `npm stage approve <stage-id>` (needs 2FA), or approve it on npmjs.com. Check `npm view coregrc dist-tags` shows the new version.
+5. Update https://core-grc.com/claude/cli if commands or behaviour changed.
 
 ## Contributing
 

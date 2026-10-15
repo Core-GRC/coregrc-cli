@@ -18,7 +18,7 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-      # Trusted publishing needs npm 11.5.1 or later.
+      # Trusted publishing and npm stage need npm 11.
       - run: npm install -g npm@11
       - name: Check the release tag matches package.json
         run: |
@@ -28,4 +28,6 @@ jobs:
             exit 1
           fi
       - run: npm test
-      - run: npm publish
+      # The trusted publisher only allows staging. A maintainer approves each
+      # release with 2FA (npm stage approve, or on npmjs.com) before it goes live.
+      - run: npm stage publish .
