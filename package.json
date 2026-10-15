@@ -1,0 +1,41 @@
+{
+  "name": "coregrc",
+  "version": "1.0.0",
+  "description": "Core GRC from your terminal: third-party risk, privacy policies, cookie consent, privacy rights and website accessibility tools, using your existing Core GRC permissions. More information is available at core-grc.com",
+  "keywords": [
+    "core-grc",
+    "cli",
+    "grc",
+    "tprm",
+    "privacy",
+    "cookie-consent",
+    "accessibility",
+    "mcp",
+    "nodejs"
+  ],
+  "homepage": "https://core-grc.com/claude/cli",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Core-GRC/coregrc-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Core-GRC/coregrc-cli/issues",
+    "email": "support@core-grc.com"
+  },
+  "author": "Core GRC",
+  "license": "MIT",
+  "bin": {
+    "coregrc": "bin/coregrc.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test test/cli.test.js"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
