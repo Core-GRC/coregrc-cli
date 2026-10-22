@@ -1,5 +1,6 @@
 "use strict";
 
+const fs = require("fs");
 const { login, logout } = require("./auth");
 const {
   listTools,
@@ -39,6 +40,8 @@ Usage:
   coregrc describe <tool-name>           Show a tool's description and input schema
   coregrc call <tool-name> [json-args]   Call any tool by its full name
   coregrc <module> <action> [json-args]  Call a tool by module and action
+
+json-args is inline JSON, @file.json to read it from a file, or @- to read stdin.
   coregrc --version                      Print the CLI version
 
 Modules are prefixes from tools/list (tprm, policy, consent, rights, webaccess).
@@ -54,6 +57,7 @@ Actions are the rest of the tool name, in kebab-case or as separate words:
   coregrc rights get-stats
   coregrc webaccess list-websites
   coregrc webaccess list-scan-issues '{"jobId":"...","limit":10}'
+  coregrc tprm create-template @supplier-security.json
 
 Results print as JSON on stdout. A failed tool call prints {"success":false,"error":...}
 and exits 1. Delete, archive, cancel, restore, publish, and paid-licence tools require
@@ -78,7 +82,18 @@ function parseModuleFlag(argv) {
 
 function looksLikeJsonArg(value) {
   const text = String(value || "").trim();
-  return text.startsWith("{") || text.startsWith("[");
+  return text.startsWith("{") || text.startsWith("[") || (text.startsWith("@") && text.length > 1);
+}
+
+/** Inline JSON as given; @path reads that file and @- reads stdin. */
+function readJsonArgs(value, readFile = (target) => fs.readFileSync(target, "utf8")) {
+  if (typeof value !== "string" || !value.trim().startsWith("@")) return value;
+  const target = value.trim().slice(1);
+  try {
+    return readFile(target === "-" ? 0 : target);
+  } catch (error) {
+    throw new Error(`Could not read JSON args from ${target === "-" ? "stdin" : target}: ${error.message}`);
+  }
 }
 
 function splitTokensAndJson(rest) {
@@ -164,7 +179,7 @@ async function run(argv, deps = {}) {
   if (cmd === "call") {
     const [name, jsonArgs] = rest;
     if (!name || rest.length > 2) throw new Error("Usage: coregrc call <tool-name> [json-args]");
-    print(await invoke(name, jsonArgs));
+    print(await invoke(name, readJsonArgs(jsonArgs, deps.readFile)));
     return;
   }
   if (RESERVED_COMMANDS.has(cmd)) {
@@ -174,7 +189,7 @@ async function run(argv, deps = {}) {
   // Call straight away: the server resolves aliases such as tprm_dashboard and
   // enforces modules and permissions. tools/list is only fetched to explain an
   // unknown name, which saves a round trip on every normal command.
-  const result = await invoke(name, jsonArgs);
+  const result = await invoke(name, readJsonArgs(jsonArgs, deps.readFile));
   if (isUnknownToolResult(result)) {
     assertListedModuleTool(cmd, name, await fetchTools());
   }
@@ -186,5 +201,6 @@ module.exports = {
   usage,
   parseModuleFlag,
   toolNameFromModuleCommand,
+  readJsonArgs,
   RESERVED_COMMANDS,
 };

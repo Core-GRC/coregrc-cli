@@ -9,7 +9,7 @@ const {
   bindCallbackServer,
   listenLoopback,
 } = require("../src/auth");
-const { parseModuleFlag, toolNameFromModuleCommand, usage, run } = require("../src/main");
+const { parseModuleFlag, toolNameFromModuleCommand, readJsonArgs, usage, run } = require("../src/main");
 const { DEFAULTS, resolveSessionUrls } = require("../src/config");
 const {
   toolCallFailed,
@@ -519,5 +519,58 @@ describe("plainToolDescription", () => {
     assert.equal(plainToolDescription({ name: "a_b", description: "a_b. Does a thing." }), "Does a thing.");
     assert.equal(plainToolDescription({ name: "a_b" }), "");
     assert.equal(plainToolDescription(null), "");
+  });
+});
+
+describe("JSON args from a file or stdin", () => {
+  const template = '{"name":"Supplier security","questions":[{"question":"Do you encrypt data at rest?","type":"yes-no"}]}';
+
+  it("passes inline JSON through unchanged", () => {
+    assert.equal(readJsonArgs('{"a":1}', () => { throw new Error("no read"); }), '{"a":1}');
+    assert.equal(readJsonArgs(undefined), undefined);
+  });
+
+  it("reads @path from that file and @- from stdin", () => {
+    const reads = [];
+    const readFile = (target) => { reads.push(target); return template; };
+    assert.equal(readJsonArgs("@template.json", readFile), template);
+    assert.equal(readJsonArgs("@-", readFile), template);
+    assert.deepEqual(reads, ["template.json", 0]);
+  });
+
+  it("says which file could not be read", () => {
+    const readFile = () => { throw new Error("ENOENT: no such file"); };
+    assert.throws(() => readJsonArgs("@missing.json", readFile), /Could not read JSON args from missing\.json: ENOENT/);
+    assert.throws(() => readJsonArgs("@-", readFile), /from stdin/);
+  });
+
+  it("treats a trailing @file as the args for module and call commands", async () => {
+    const calls = [];
+    const deps = {
+      fetchToolList: async () => { throw new Error("should not fetch tools/list"); },
+      callTool: async (name, jsonArgs) => { calls.push({ name, jsonArgs }); return OK_RESULT; },
+      printToolResult: () => {},
+      readFile: (target) => (target === "tpl.json" ? template : ""),
+    };
+    await run(["tprm", "create-template", "@tpl.json"], deps);
+    await run(["call", "tprm_create_template", "@tpl.json"], deps);
+    assert.deepEqual(calls, [
+      { name: "tprm_create_template", jsonArgs: template },
+      { name: "tprm_create_template", jsonArgs: template },
+    ]);
+  });
+
+  it("reads a real file", () => {
+    const file = path.join(require("os").tmpdir(), `coregrc-cli-${process.pid}.json`);
+    fs.writeFileSync(file, template);
+    try {
+      assert.equal(readJsonArgs(`@${file}`), template);
+    } finally {
+      fs.unlinkSync(file);
+    }
+  });
+
+  it("documents @file in the help", () => {
+    assert.match(usage(), /@file\.json to read it from a file, or @- to read stdin/);
   });
 });

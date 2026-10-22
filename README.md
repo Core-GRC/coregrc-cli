@@ -36,7 +36,11 @@ coregrc tprm list-entities '{"entityType":"vendor"}'
 coregrc call tprm_list_entities '{"entityType":"vendor"}'
 ```
 
-Modules are `tprm`, `policy`, `consent`, `rights`, and `webaccess`. You only see modules your organization has active and the tools your role allows. The action is the rest of the tool name in kebab-case or as separate words, and arguments are one JSON object at the end.
+Modules are `tprm`, `policy`, `consent`, `rights`, and `webaccess`. You only see modules your organization has active and the tools your role allows. The action is the rest of the tool name in kebab-case or as separate words, and arguments are one JSON object at the end. Put `@file.json` there instead to read the arguments from a file, or `@-` to read them from stdin:
+
+```bash
+coregrc tprm create-template @supplier-security.json
+```
 
 Deleting, archiving, cancelling, restoring, publishing, starting a cookie scan, and using a paid licence need `"confirm": true` in the arguments.
 
