@@ -212,8 +212,18 @@ function printableToolPayload(result) {
     return result.structuredContent;
   }
   if (result.isError === true) {
+    // Errors raised before the tool runs (such as schema checks) carry only text.
+    // Print the same JSON shape as tool errors so scripts can parse every failure.
     const text = result.content && result.content[0] && result.content[0].text;
-    return typeof text === "string" ? text : result;
+    if (typeof text === "string") {
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === "object" && parsed.success === false) return parsed;
+      } catch {
+        // Plain text error.
+      }
+    }
+    return { success: false, error: typeof text === "string" && text ? text : "Request failed" };
   }
   const text = result.content && result.content[0] && result.content[0].text;
   if (typeof text === "string") {

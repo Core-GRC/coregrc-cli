@@ -58,8 +58,8 @@ coregrc tprm list-entities '{"entityType":"vendor","pageSize":100}' | jq -r '.it
 | --- | --- |
 | `COREGRC_CREDENTIALS` | `~/.config/coregrc/credentials.json` |
 | `COREGRC_APP_ORIGIN` | `https://app.core-grc.com` |
-| `COREGRC_MCP_URL` | `https://mcp.core-grc.com/mcpHttp` |
-| `COREGRC_OAUTH_URL` | `https://mcp.core-grc.com/mcpOauthHttp` |
+| `COREGRC_MCP_URL` | `https://cli.core-grc.com/mcpHttp` |
+| `COREGRC_OAUTH_URL` | `https://cli.core-grc.com/mcpOauthHttp` |
 
 Use a different `COREGRC_CREDENTIALS` file per organization to stay signed in to several. The credentials file is created readable only by you; don't share or commit it.
 

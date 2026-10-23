@@ -36,9 +36,9 @@ const unknownToolResult = (name) => ({
 });
 
 describe("defaults", () => {
-  it("uses mcp.core-grc.com, not cloudfunctions.net", () => {
-    assert.equal(DEFAULTS.mcpUrl, "https://mcp.core-grc.com/mcpHttp");
-    assert.equal(DEFAULTS.oauthUrl, "https://mcp.core-grc.com/mcpOauthHttp");
+  it("uses cli.core-grc.com, not cloudfunctions.net", () => {
+    assert.equal(DEFAULTS.mcpUrl, "https://cli.core-grc.com/mcpHttp");
+    assert.equal(DEFAULTS.oauthUrl, "https://cli.core-grc.com/mcpOauthHttp");
     assert.equal(DEFAULTS.mcpUrl.includes("cloudfunctions.net"), false);
   });
 });
@@ -168,10 +168,31 @@ describe("tool isError", () => {
       }),
       { success: false, error: "Unknown tool: x" }
     );
-    assert.equal(
-      printableToolPayload({ isError: true, content: [{ type: "text", text: "Unknown tool: x" }] }),
-      "Unknown tool: x"
+  });
+
+  it("prints text-only errors as the same JSON shape the README documents", () => {
+    // The MCP SDK rejects bad arguments before the tool runs, with text only.
+    assert.deepEqual(
+      printableToolPayload({ isError: true, content: [{ type: "text", text: "Input validation error: entityType" }] }),
+      { success: false, error: "Input validation error: entityType" }
     );
+    assert.deepEqual(
+      printableToolPayload({ isError: true, content: [{ type: "text", text: "{\"success\":false,\"error\":\"Not allowed\"}" }] }),
+      { success: false, error: "Not allowed" }
+    );
+    assert.deepEqual(printableToolPayload({ isError: true, content: [] }), { success: false, error: "Request failed" });
+    const lines = [];
+    const originalLog = console.log;
+    const previous = process.exitCode;
+    console.log = (line) => lines.push(line);
+    try {
+      printToolResult({ isError: true, content: [{ type: "text", text: "Input validation error" }] });
+      assert.deepEqual(JSON.parse(lines[0]), { success: false, error: "Input validation error" });
+      assert.equal(process.exitCode, 1);
+    } finally {
+      console.log = originalLog;
+      process.exitCode = previous;
+    }
   });
 });
 

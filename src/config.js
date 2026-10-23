@@ -5,8 +5,8 @@ const path = require("path");
 
 const DEFAULTS = {
   appOrigin: "https://app.core-grc.com",
-  mcpUrl: "https://mcp.core-grc.com/mcpHttp",
-  oauthUrl: "https://mcp.core-grc.com/mcpOauthHttp",
+  mcpUrl: "https://cli.core-grc.com/mcpHttp",
+  oauthUrl: "https://cli.core-grc.com/mcpOauthHttp",
 };
 
 function envOr(name, fallback, env = process.env) {
