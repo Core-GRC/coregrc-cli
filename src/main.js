@@ -69,7 +69,7 @@ Environment:
   COREGRC_OAUTH_URL    OAuth HTTP URL (overrides the URL stored at login)
   COREGRC_CREDENTIALS  Credentials file (default ~/.config/coregrc/credentials.json)
 
-Docs: https://core-grc.com/claude/cli
+Docs: https://core-grc.com/docs/cli
 `;
 }
 

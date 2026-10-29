@@ -2,7 +2,7 @@
 
 The Core GRC command line. Run Core GRC tools for third-party risk management, privacy policies and notices, cookie consent, privacy rights, and website accessibility from your terminal, with the permissions you already have in Core GRC.
 
-Full documentation: https://core-grc.com/claude/cli
+Full documentation: https://core-grc.com/docs/cli
 
 ## Install
 
@@ -40,6 +40,7 @@ Modules are `tprm`, `policy`, `consent`, `rights`, and `webaccess`. You only see
 
 ```bash
 coregrc tprm create-template @supplier-security.json
+coregrc tprm add-template-mapping '{"templateId":"<id>","questionId":"q1","kind":"risk","answerValue":"No","title":"No MFA","description":"MFA is not enforced"}'
 ```
 
 Deleting, archiving, cancelling, restoring, publishing, starting a cookie scan, and using a paid licence need `"confirm": true` in the arguments.

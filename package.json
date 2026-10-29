@@ -1,6 +1,6 @@
 {
   "name": "coregrc",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Core GRC from your terminal: third-party risk, privacy policies, cookie consent, privacy rights and website accessibility tools, using your existing Core GRC permissions. More information is available at core-grc.com",
   "keywords": [
     "core-grc",
@@ -13,7 +13,7 @@
     "mcp",
     "nodejs"
   ],
-  "homepage": "https://core-grc.com/claude/cli",
+  "homepage": "https://core-grc.com/docs/cli",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Core-GRC/coregrc-cli.git"
