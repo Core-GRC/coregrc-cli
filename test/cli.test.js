@@ -595,3 +595,130 @@ describe("JSON args from a file or stdin", () => {
     assert.match(usage(), /@file\.json to read it from a file, or @- to read stdin/);
   });
 });
+
+describe("bulk tools in batches", () => {
+  const { callToolInBatches, mergeBulkPayload } = require("../src/mcp");
+  const bulkTool = (name, field, maxItems) => ({
+    name,
+    inputSchema: { type: "object", properties: { [field]: { type: "array", maxItems } } },
+  });
+  const okResult = (payload) => ({ structuredContent: payload });
+
+  it("sends a list over the cap in consecutive calls and merges the results", async () => {
+    const calls = [];
+    const logs = [];
+    const items = Array.from({ length: 120 }, (_, i) => ({ id: `v${i}`, fields: { owner: "Sam" } }));
+    const result = await callToolInBatches("tprm_bulk_update_entities", JSON.stringify({ entityType: "vendor", items }), {
+      fetchToolList: async () => [bulkTool("tprm_bulk_update_entities", "items", 50)],
+      log: (line) => logs.push(line),
+      callTool: async (name, json) => {
+        const args = JSON.parse(json);
+        calls.push(args);
+        const failed = calls.length === 2 ? [{ index: 3, id: args.items[3].id, error: "Entity not found" }] : [];
+        return okResult({
+          entityType: args.entityType,
+          success: failed.length === 0,
+          requested: args.items.length,
+          updatedCount: args.items.length - failed.length,
+          duplicateCount: 0,
+          failedCount: failed.length,
+          updated: [{ index: 0, id: args.items[0].id }],
+          duplicates: [],
+          failed,
+          notAttempted: calls.length === 3 ? [19] : [],
+        });
+      },
+    });
+    assert.deepEqual(calls.map((args) => args.items.length), [50, 50, 20]);
+    assert.equal(calls[1].entityType, "vendor");
+    const merged = result.structuredContent;
+    assert.equal(merged.requested, 120);
+    assert.equal(merged.updatedCount, 119);
+    assert.equal(merged.failedCount, 1);
+    assert.equal(merged.success, false);
+    assert.deepEqual(merged.updated.map((row) => row.index), [0, 50, 100]);
+    assert.deepEqual(merged.failed, [{ index: 53, id: "v53", error: "Entity not found" }]);
+    assert.deepEqual(merged.notAttempted, [119]);
+    assert.deepEqual(logs, ["Sent 50 of 120", "Sent 100 of 120", "Sent 120 of 120"]);
+    assert.equal(result.isError, undefined);
+  });
+
+  it("uses the tool's own cap, such as 10 for workflow runs, and splits id lists", async () => {
+    const sizes = [];
+    await callToolInBatches("tprm_bulk_archive_risks", JSON.stringify({ confirm: true, ids: Array.from({ length: 25 }, (_, i) => `r${i}`) }), {
+      fetchToolList: async () => [bulkTool("tprm_bulk_archive_risks", "ids", 10)],
+      log: () => {},
+      callTool: async (name, json) => {
+        const args = JSON.parse(json);
+        assert.equal(args.confirm, true);
+        sizes.push(args.ids.length);
+        return okResult({ success: true, requested: args.ids.length, archivedCount: args.ids.length, archived: [] });
+      },
+    });
+    assert.deepEqual(sizes, [10, 10, 5]);
+  });
+
+  it("makes one call, with no tools/list fetch, for a short list or another tool", async () => {
+    const calls = [];
+    const deps = {
+      fetchToolList: async () => { throw new Error("tools/list must not be fetched"); },
+      callTool: async (name, json) => { calls.push([name, json]); return OK_RESULT; },
+    };
+    const short = JSON.stringify({ entityType: "vendor", items: [{ id: "v1", fields: {} }] });
+    assert.equal(await callToolInBatches("tprm_bulk_update_entities", short, deps), OK_RESULT);
+    const long = JSON.stringify({ items: Array.from({ length: 80 }, () => ({})) });
+    assert.equal(await callToolInBatches("tprm_update_assessment_answers", long, deps), OK_RESULT);
+    assert.deepEqual(calls.map(([name]) => name), ["tprm_bulk_update_entities", "tprm_update_assessment_answers"]);
+    assert.equal(calls[1][1], long);
+  });
+
+  it("makes one call when the list fits the cap or the tool is not listed", async () => {
+    let count = 0;
+    const deps = {
+      fetchToolList: async () => [bulkTool("tprm_bulk_update_risks", "items", 50)],
+      callTool: async () => { count += 1; return OK_RESULT; },
+    };
+    const items = JSON.stringify({ items: Array.from({ length: 30 }, (_, i) => ({ id: `r${i}`, fields: {} })) });
+    await callToolInBatches("tprm_bulk_update_risks", items, deps);
+    await callToolInBatches("tprm_bulk_not_listed", items, deps);
+    assert.equal(count, 2);
+  });
+
+  it("stops at a refused call and reports what was done and what was never sent", async () => {
+    let count = 0;
+    const result = await callToolInBatches("tprm_bulk_update_issues", JSON.stringify({ items: Array.from({ length: 25 }, (_, i) => ({ id: `i${i}`, fields: {} })) }), {
+      fetchToolList: async () => [bulkTool("tprm_bulk_update_issues", "items", 10)],
+      log: () => {},
+      callTool: async () => {
+        count += 1;
+        if (count === 2) return { isError: true, structuredContent: { success: false, error: "Insufficient permissions" } };
+        return okResult({ success: true, requested: 10, updatedCount: 10, failedCount: 0, updated: [], failed: [], notAttempted: [] });
+      },
+    });
+    assert.equal(count, 2);
+    assert.equal(result.isError, true);
+    assert.equal(result.structuredContent.success, false);
+    assert.equal(result.structuredContent.error, "Insufficient permissions");
+    assert.equal(result.structuredContent.updatedCount, 10);
+    assert.deepEqual(result.structuredContent.notAttempted, Array.from({ length: 15 }, (_, i) => i + 10));
+  });
+
+  it("shifts duplicate references to their place in the full list", () => {
+    const merged = mergeBulkPayload({}, { duplicates: [{ index: 2, id: "a", duplicateOfIndex: 0 }] }, 50);
+    assert.deepEqual(merged.duplicates, [{ index: 52, id: "a", duplicateOfIndex: 50 }]);
+  });
+
+  it("batches module commands and call alike", async () => {
+    const sizes = [];
+    const deps = {
+      fetchToolList: async () => [bulkTool("tprm_bulk_update_entities", "items", 50)],
+      log: () => {},
+      callTool: async (name, json) => { sizes.push(JSON.parse(json).items.length); return okResult({ success: true, requested: 0 }); },
+      printToolResult: () => {},
+    };
+    const json = JSON.stringify({ entityType: "vendor", items: Array.from({ length: 60 }, (_, i) => ({ id: `v${i}`, fields: {} })) });
+    await run(["tprm", "bulk-update-entities", json], deps);
+    await run(["call", "tprm_bulk_update_entities", json], deps);
+    assert.deepEqual(sizes, [50, 10, 50, 10]);
+  });
+});

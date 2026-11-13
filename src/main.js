@@ -5,6 +5,7 @@ const { login, logout } = require("./auth");
 const {
   listTools,
   callTool,
+  callToolInBatches,
   printToolResult,
   isUnknownToolResult,
   whoami,
@@ -58,10 +59,15 @@ Actions are the rest of the tool name, in kebab-case or as separate words:
   coregrc webaccess list-websites
   coregrc webaccess list-scan-issues '{"jobId":"...","limit":10}'
   coregrc tprm create-template @supplier-security.json
+  coregrc tprm bulk-update-entities @vendor-owners.json
 
 Results print as JSON on stdout. A failed tool call prints {"success":false,"error":...}
 and exits 1. Delete, archive, cancel, restore, publish, and paid-licence tools require
 confirm:true in the JSON args.
+
+Bulk tools (names with bulk) take a list of up to 50 records, or 10 for assessment
+jobs and workflow runs. Pass a longer list and the CLI sends it in batches and prints
+one merged result. Check failedCount: a result with failed items still exits 0.
 
 Environment:
   COREGRC_APP_ORIGIN   Central app origin (default https://app.core-grc.com)
@@ -139,7 +145,9 @@ function assertToolsArgs(rest) {
 
 async function run(argv, deps = {}) {
   const fetchTools = deps.fetchToolList || fetchToolList;
-  const invoke = deps.callTool || callTool;
+  const callOnce = deps.callTool || callTool;
+  // A bulk tool's list longer than its cap is sent in consecutive calls.
+  const invoke = (name, jsonArgs) => callToolInBatches(name, jsonArgs, { callTool: callOnce, fetchToolList: fetchTools, log: deps.log });
   const print = deps.printToolResult || printToolResult;
   const [cmd, ...rest] = argv;
   if (!cmd || cmd === "help" || cmd === "--help" || cmd === "-h") {

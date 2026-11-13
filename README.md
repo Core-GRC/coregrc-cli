@@ -45,6 +45,26 @@ coregrc tprm add-template-mapping '{"templateId":"<id>","questionId":"q1","kind"
 
 Deleting, archiving, cancelling, restoring, publishing, starting a cookie scan, and using a paid licence need `"confirm": true` in the arguments.
 
+### Bulk tools
+
+Tools with `bulk` in the name work on a list of records in one command, such as `tprm bulk-create-entities`, `tprm bulk-update-entities`, `tprm bulk-update-risks` and `tprm bulk-archive-entities`. Run `coregrc tools | grep bulk` to see them all.
+
+```bash
+coregrc tprm bulk-update-entities @vendor-owners.json
+```
+
+```json
+{
+  "entityType": "vendor",
+  "items": [
+    { "id": "<id-1>", "fields": { "owner": "priya@example.com" } },
+    { "id": "<id-2>", "fields": { "owner": "sam@example.com" } }
+  ]
+}
+```
+
+A bulk tool takes up to 50 records per call, or 10 for assessment jobs and workflow runs. Pass a longer list and the CLI sends it in batches, shows progress on stderr, and prints one merged result. One bad record doesn't stop the rest, and a result with failed records still exits 0, so check `failedCount` and `failed`. `index` is the record's position in your list. If a whole batch is refused, the CLI stops, exits 1, and lists the records it never sent in `notAttempted`. Archiving in bulk needs `"confirm": true`; there is no bulk delete.
+
 ## Output
 
 Results print to stdout as JSON. A failed tool call prints `{"success": false, "error": "..."}` and exits 1. Errors before the call, such as not being signed in, print to stderr and exit 1.

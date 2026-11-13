@@ -268,6 +268,80 @@ async function callTool(name, argsJson) {
   return mcpRpc("tools/call", { name, arguments: args });
 }
 
+// The smallest cap a bulk tool has. A shorter list always fits in one call.
+const SMALLEST_BULK_CAP = 10;
+
+/** The list a bulk tool takes: items (records) or ids. */
+function bulkListField(args) {
+  return ["items", "ids"].find((field) => Array.isArray(args[field]));
+}
+
+function shiftIndex(value, offset) {
+  if (typeof value === "number") return value + offset;
+  if (!value || typeof value !== "object") return value;
+  const row = { ...value };
+  if (typeof row.index === "number") row.index += offset;
+  if (typeof row.duplicateOfIndex === "number") row.duplicateOfIndex += offset;
+  return row;
+}
+
+/** Add one batch's result to the total, moving item indexes to their place in the full list. */
+function mergeBulkPayload(total, payload, offset) {
+  const out = { ...total };
+  for (const [key, value] of Object.entries(payload || {})) {
+    if (Array.isArray(value)) {
+      out[key] = [...(Array.isArray(out[key]) ? out[key] : []), ...value.map((row) => shiftIndex(row, offset))];
+    } else if (typeof value === "number" && (key === "requested" || key.endsWith("Count"))) {
+      out[key] = (typeof out[key] === "number" ? out[key] : 0) + value;
+    } else if (key === "success") {
+      out.success = out.success !== false && value === true;
+    } else if (!(key in out)) {
+      out[key] = value;
+    }
+  }
+  return out;
+}
+
+/**
+ * Bulk tools (names with _bulk_) cap their list at maxItems. A longer list is
+ * sent in consecutive calls and the results merged into one, with indexes that
+ * point into the list as given. Everything else is passed straight through.
+ */
+async function callToolInBatches(name, argsJson, deps = {}) {
+  const invoke = deps.callTool || callTool;
+  if (!String(name).includes("_bulk_")) return invoke(name, argsJson);
+  const args = parseToolArgs(argsJson);
+  const field = bulkListField(args);
+  if (!field || args[field].length <= SMALLEST_BULK_CAP) return invoke(name, argsJson);
+  const tools = await (deps.fetchToolList || fetchToolList)();
+  const tool = tools.find((item) => item.name === name);
+  const cap = Number(tool && tool.inputSchema && tool.inputSchema.properties &&
+    tool.inputSchema.properties[field] && tool.inputSchema.properties[field].maxItems);
+  const list = args[field];
+  if (!Number.isInteger(cap) || cap < 1 || list.length <= cap) return invoke(name, argsJson);
+
+  const log = deps.log || ((line) => console.error(line));
+  let total = {};
+  for (let offset = 0; offset < list.length; offset += cap) {
+    const batch = list.slice(offset, offset + cap);
+    const result = await invoke(name, JSON.stringify({ ...args, [field]: batch }));
+    if (toolCallFailed(result)) {
+      // The whole call was refused (permissions, confirm, a bad argument).
+      // Stop, and report what was already done and what was never sent.
+      const error = printableToolPayload(result);
+      const notSent = Array.from({ length: list.length - offset }, (_, i) => offset + i);
+      const merged = mergeBulkPayload(total, { notAttempted: notSent }, 0);
+      return {
+        isError: true,
+        structuredContent: { ...merged, success: false, error: (error && error.error) || "Request failed" },
+      };
+    }
+    total = mergeBulkPayload(total, printableToolPayload(result), offset);
+    log(`Sent ${Math.min(offset + cap, list.length)} of ${list.length}`);
+  }
+  return { structuredContent: total };
+}
+
 async function whoami() {
   const result = await mcpRpc("tools/call", { name: "coregrc_whoami", arguments: {} });
   printToolResult(result);
@@ -292,6 +366,8 @@ module.exports = {
   mcpRpc,
   listTools,
   callTool,
+  callToolInBatches,
+  mergeBulkPayload,
   whoami,
   describeTool,
   toolCallFailed,

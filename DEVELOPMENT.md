@@ -1,6 +1,6 @@
 # Developing the Core GRC CLI
 
-Published to npm as [`coregrc`](https://www.npmjs.com/package/coregrc). `files` in `package.json` ships only `bin`, `src`, `README.md`, and `LICENSE`. `README.md` is the npm page; the full customer docs are at https://core-grc.com/claude/cli.
+Published to npm as [`coregrc`](https://www.npmjs.com/package/coregrc). `files` in `package.json` ships only `bin`, `src`, `README.md`, and `LICENSE`. `README.md` is the npm page; the full customer docs are at https://core-grc.com/docs/cli.
 
 ## Run from the repo
 
@@ -33,6 +33,7 @@ A separate `COREGRC_CREDENTIALS` file keeps that sign-in apart from your product
 - The access token is refreshed a minute before it expires and once more on a `401`.
 - Module commands call `<module>_<action>` directly, so new server tools need no CLI change. The server resolves aliases such as `tprm_dashboard`. `tools/list` is only fetched when the server says the name is unknown, to tell a wrong module from a wrong action.
 - Some tools are only listed for CLI sign-ins.
+- Bulk tools (names with `_bulk_`) cap their `items` or `ids` list. When a list is longer than 10, the CLI reads the tool's `maxItems` from `tools/list`, sends the list in batches of that size, and merges the results, moving each `index` to its place in the full list. A new bulk tool needs no CLI change as long as its list is called `items` or `ids` and its schema sets `maxItems`.
 
 ## Publish
 
@@ -42,7 +43,7 @@ Releases are staged from GitHub Actions with npm trusted publishing, so there is
 2. `npm test` and `npm pack --dry-run`. Check only `bin`, `src`, `README.md`, `LICENSE`, and `package.json` are included.
 3. Create a GitHub release with the tag `v<version>`, for example `v1.0.1`. The `Publish` workflow checks the tag matches `package.json`, runs the tests, and stages the release on npm.
 4. Approve it: `npm stage list coregrc`, then `npm stage approve <stage-id>` (needs 2FA), or approve it on npmjs.com. Check `npm view coregrc dist-tags` shows the new version.
-5. Update https://core-grc.com/claude/cli if commands or behaviour changed.
+5. Update https://core-grc.com/docs/cli if commands or behaviour changed.
 
 ## Contributing
 
