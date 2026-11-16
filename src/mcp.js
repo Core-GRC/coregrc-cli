@@ -324,7 +324,30 @@ async function callToolInBatches(name, argsJson, deps = {}) {
   let total = {};
   for (let offset = 0; offset < list.length; offset += cap) {
     const batch = list.slice(offset, offset + cap);
-    const result = await invoke(name, JSON.stringify({ ...args, [field]: batch }));
+    let result;
+    try {
+      result = await invoke(name, JSON.stringify({ ...args, [field]: batch }));
+    } catch (error) {
+      // Nothing was done yet: fail the same way a single call does.
+      if (offset === 0) throw error;
+      // A network, HTTP or JSON-RPC failure. Keep what earlier calls did. The items in
+      // this call may or may not have been applied, so they are listed apart from the
+      // items that were never sent and must be checked before they are sent again.
+      const end = offset + batch.length;
+      const unconfirmed = Array.from({ length: batch.length }, (_, i) => offset + i);
+      const notSent = Array.from({ length: list.length - end }, (_, i) => end + i);
+      const merged = mergeBulkPayload(total, { notAttempted: notSent }, 0);
+      return {
+        isError: true,
+        structuredContent: {
+          ...merged,
+          unconfirmed,
+          success: false,
+          error: (error && error.message) || "Request failed",
+          hint: "The request for the items in unconfirmed failed before a reply arrived, so they may already have been applied. Check them before sending them again. Items in notAttempted were never sent.",
+        },
+      };
+    }
     if (toolCallFailed(result)) {
       // The whole call was refused (permissions, confirm, a bad argument).
       // Stop, and report what was already done and what was never sent.

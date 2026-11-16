@@ -703,6 +703,40 @@ describe("bulk tools in batches", () => {
     assert.deepEqual(result.structuredContent.notAttempted, Array.from({ length: 15 }, (_, i) => i + 10));
   });
 
+  // A request that throws (network, HTTP or JSON-RPC error) must not lose earlier results.
+  it("keeps earlier results when a later request fails, and lists that call's items apart", async () => {
+    let count = 0;
+    const result = await callToolInBatches("tprm_bulk_update_issues", JSON.stringify({ items: Array.from({ length: 25 }, (_, i) => ({ id: `i${i}`, fields: {} })) }), {
+      fetchToolList: async () => [bulkTool("tprm_bulk_update_issues", "items", 10)],
+      log: () => {},
+      callTool: async () => {
+        count += 1;
+        if (count === 2) throw new Error("MCP HTTP 502");
+        return okResult({ success: true, requested: 10, updatedCount: 10, failedCount: 0, updated: [{ index: 0, id: "i0" }], failed: [], notAttempted: [] });
+      },
+    });
+    assert.equal(count, 2);
+    assert.equal(result.isError, true);
+    const out = result.structuredContent;
+    assert.equal(out.success, false);
+    assert.equal(out.error, "MCP HTTP 502");
+    assert.equal(out.updatedCount, 10);
+    assert.deepEqual(out.updated, [{ index: 0, id: "i0" }]);
+    assert.deepEqual(out.unconfirmed, Array.from({ length: 10 }, (_, i) => i + 10));
+    assert.deepEqual(out.notAttempted, [20, 21, 22, 23, 24]);
+  });
+
+  it("throws as a single call does when the first request fails", async () => {
+    await assert.rejects(
+      callToolInBatches("tprm_bulk_update_issues", JSON.stringify({ items: Array.from({ length: 25 }, (_, i) => ({ id: `i${i}`, fields: {} })) }), {
+        fetchToolList: async () => [bulkTool("tprm_bulk_update_issues", "items", 10)],
+        log: () => {},
+        callTool: async () => { throw new Error("MCP HTTP 502"); },
+      }),
+      /MCP HTTP 502/
+    );
+  });
+
   it("shifts duplicate references to their place in the full list", () => {
     const merged = mergeBulkPayload({}, { duplicates: [{ index: 2, id: "a", duplicateOfIndex: 0 }] }, 50);
     assert.deepEqual(merged.duplicates, [{ index: 52, id: "a", duplicateOfIndex: 50 }]);

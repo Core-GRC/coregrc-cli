@@ -63,7 +63,7 @@ coregrc tprm bulk-update-entities @vendor-owners.json
 }
 ```
 
-A bulk tool takes up to 50 records per call, or 10 for assessment jobs and workflow runs. Pass a longer list and the CLI sends it in batches, shows progress on stderr, and prints one merged result. One bad record doesn't stop the rest, and a result with failed records still exits 0, so check `failedCount` and `failed`. `index` is the record's position in your list. If a whole batch is refused, the CLI stops, exits 1, and lists the records it never sent in `notAttempted`. Archiving in bulk needs `"confirm": true`; there is no bulk delete.
+A bulk tool takes up to 50 records per call, or 10 for assessment jobs and workflow runs. Pass a longer list and the CLI sends it in batches, shows progress on stderr, and prints one merged result. One bad record doesn't stop the rest, and a result with failed records still exits 0, so check `failedCount` and `failed`. `index` is the record's position in your list. If a whole batch is refused, the CLI stops, exits 1, and lists the records it never sent in `notAttempted`. If a request fails before a reply arrives (a network or server error), the CLI also stops and exits 1, keeps the results of earlier batches, and lists that batch's records in `unconfirmed`: they may already have been applied, so check them before sending them again. Archiving in bulk needs `"confirm": true`; there is no bulk delete.
 
 ## Output
 
