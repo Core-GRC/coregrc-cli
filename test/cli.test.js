@@ -451,6 +451,44 @@ describe("aliases and version", () => {
     );
   });
 
+  it("does not map the removed AI incident commands onto the incident tools", async () => {
+    for (const argv of [["tprm", "create-ai-incident", "{}"], ["tprm", "list", "ai", "incidents"]]) {
+      const called = [];
+      await assert.rejects(
+        () => run(argv, {
+          fetchToolList: async () => [{ name: "tprm_create_incident" }, { name: "tprm_list_incidents" }],
+          callTool: async (name) => {
+            called.push(name);
+            return unknownToolResult(name);
+          },
+          printToolResult: () => {
+            throw new Error("should not print");
+          },
+        }),
+        /Unknown tool: tprm_(create|list)_ai_incidents?\. Run: coregrc tools --module tprm/
+      );
+      assert.equal(called.length, 1);
+      assert.match(called[0], /^tprm_(create_ai_incident|list_ai_incidents)$/);
+    }
+  });
+
+  it("calls the incident tools by kebab-case or separate words", async () => {
+    const called = [];
+    const deps = {
+      callTool: async (name, jsonArgs) => {
+        called.push({ name, jsonArgs });
+        return OK_RESULT;
+      },
+      printToolResult: () => {},
+    };
+    await run(["tprm", "create-incident", '{"fields":{"title":"x"}}'], deps);
+    await run(["tprm", "get", "record", "history", '{"recordType":"incident","recordId":"i1"}'], deps);
+    assert.deepEqual(called, [
+      { name: "tprm_create_incident", jsonArgs: '{"fields":{"title":"x"}}' },
+      { name: "tprm_get_record_history", jsonArgs: '{"recordType":"incident","recordId":"i1"}' },
+    ]);
+  });
+
   it("prints call results", async () => {
     let printed = null;
     await run(["call", "tprm_get_dashboard", "{}"], {

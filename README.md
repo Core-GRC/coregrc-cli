@@ -45,6 +45,54 @@ coregrc tprm add-template-mapping '{"templateId":"<id>","questionId":"q1","kind"
 
 Deleting, archiving, cancelling, restoring, publishing, starting a cookie scan, and using a paid licence need `"confirm": true` in the arguments.
 
+### Incidents
+
+```bash
+coregrc tprm list-incidents '{"open":true}'
+coregrc tprm create-incident '{"fields":{"title":"Vendor outage","description":"Payroll vendor down for 4 hours","category":"Third party","severity":"High","awareAt":"2026-11-20T09:00:00Z","affected":{"vendors":["<vendor-id>"]}}}'
+coregrc tprm list-regulatory-presets
+coregrc tprm upsert-incident-notification '{"id":"<incident-id>","notification":{"presetId":"gdpr-controller","stageKey":"notification"}}'
+coregrc tprm archive-incident '{"id":"<incident-id>","confirm":true}'
+```
+
+Regulator deadlines are worked out from the cited rules to help you track them. They are not legal advice.
+
+The old AI incident commands (`tprm list-ai-incidents`, `get-ai-incident`, `create-ai-incident`, `update-ai-incident` and `delete-ai-incident`) have been removed, not aliased, and now return `Unknown tool`. Use the incident commands above with category `AI` and the AI system in `affected.aiSystems`. Existing AI incidents were moved into the incident register.
+
+### AI Governance
+
+```bash
+coregrc tprm list-ai-framework-items '{"function":"GOVERN","gapOnly":true}'
+coregrc tprm get-ai-scorecard '{"aiSystemId":"<id>"}'
+coregrc tprm update-ai-scorecard '{"aiSystemId":"<id>","rowKey":"fairBiasManaged","fields":{"status":"Assessed"}}'
+coregrc tprm set-ai-impact-tier '{"aiSystemId":"<id>","tier":"High","reason":"Makes hiring decisions"}'
+coregrc tprm list-intake-submissions
+```
+
+### Vendor governance and exports
+
+```bash
+coregrc tprm list-vendor-contracts '{"vendorId":"<vendor-id>"}'
+coregrc tprm create-vendor-contract '{"vendorId":"<vendor-id>","fields":{"name":"Master services agreement","status":"Active","endDate":"2027-06-30","noticePeriodDays":90}}'
+coregrc tprm record-vendor-review '{"vendorId":"<vendor-id>","notes":"SOC 2 report checked"}'
+coregrc tprm export-dora-register > dora-register.json
+coregrc tprm export-ropa > ropa.json
+```
+
+The DORA export is a starting point to check and complete, not a filing. The RoPA export gives your GDPR Article 30 records as CSV text.
+
+### Register reviews, tags and history
+
+```bash
+coregrc tprm get-register-governance '{"entityType":"asset","entityId":"<id>"}'
+coregrc tprm record-register-review '{"entityType":"asset","entityId":"<id>","notes":"Owner confirmed"}'
+coregrc tprm update-risk '{"id":"<risk-id>","fields":{"tags":["payments"],"csfCategories":["GV.SC"]}}'
+coregrc tprm list-issues '{"tag":"payments"}'
+coregrc tprm get-record-history '{"recordType":"incident","recordId":"<id>"}'
+```
+
+Tag lists replace what is there. List tools take one tag filter per call: `tag`, `csfCategory`, `gaiRisk` or `trustworthinessCharacteristic`.
+
 ### Bulk tools
 
 Tools with `bulk` in the name work on a list of records in one command, such as `tprm bulk-create-entities`, `tprm bulk-update-entities`, `tprm bulk-update-risks` and `tprm bulk-archive-entities`. Run `coregrc tools | grep bulk` to see them all.
@@ -86,7 +134,7 @@ Use a different `COREGRC_CREDENTIALS` file per organization to stay signed in to
 
 ## Support
 
-support@core-grc.com. Report bugs in [GitHub Issues](https://github.com/Core-GRC/coregrc-cli/issues) and security problems as described in [SECURITY.md](SECURITY.md).
+support@core-grc.com. Report bugs in [GitHub Issues](https://github.com/Core-GRC/coregrc-cli/issues) and security problems as described under "Report a vulnerability" on the [Security page](https://core-grc.com/security).
 
 ## Licence
 
